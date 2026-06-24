@@ -72,28 +72,29 @@ def get_menu() -> list[str]:
             for inp in page.locator("input").all():
                 print(f"    {inp.get_attribute('name')} / {inp.get_attribute('type')} / {inp.get_attribute('id')}")
 
-        # Sayfanın iView'larının yüklenmesi için kısa bekle
+        # iView iframe'lerinin yüklenmesini bekle (max 30s)
         print("→ Menü aranıyor…")
-        page.wait_for_timeout(5000)
-
-        # Menü kalemlerini topla — JSF PrimeFaces dt.ui-datalist-item
         items: list[str] = []
-
-        # Yemek Menüsü bir iView/iframe içinde — tüm frame'leri tara
         meal_frame = None
-        for frame in page.frames:
-            try:
-                if frame.locator('dt.ui-datalist-item').count() > 0:
-                    meal_frame = frame
-                    print(f"  Meal frame bulundu: {frame.url}")
-                    break
-            except Exception:
-                pass
+        for attempt in range(6):  # 6 x 5s = 30s
+            all_frames = page.frames
+            print(f"  Deneme {attempt+1}: {len(all_frames)} frame")
+            for frame in all_frames:
+                try:
+                    url = frame.url
+                    count = frame.locator('dt.ui-datalist-item').count()
+                    print(f"    {url[:80]} -> dt={count}")
+                    if count > 0:
+                        meal_frame = frame
+                        break
+                except Exception as e:
+                    print(f"    frame err: {e}")
+            if meal_frame:
+                break
+            page.wait_for_timeout(5000)
 
         if meal_frame is None:
-            print("  ⚠ Meal frame bulunamadı. Tüm frame URL'leri:")
-            for f in page.frames:
-                print(f"    {f.url}")
+            print("  ⚠ Meal frame 30s içinde bulunamadı.")
             browser.close()
             return []
 
