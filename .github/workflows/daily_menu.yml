@@ -1,0 +1,33 @@
+name: Günlük Öğle Yemeği Menüsü
+
+on:
+  schedule:
+    # Her gün 06:00 UTC = 09:00 Türkiye (UTC+3)
+    - cron: "0 6 * * 1-5"   # Hafta içi (Pzt–Cum)
+  workflow_dispatch:          # Elle tetikleme (test için)
+
+jobs:
+  send-menu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Bağımlılıkları yükle
+        run: pip install -r requirements.txt
+
+      - name: Menüyü çek ve mail gönder
+        env:
+          PORTAL_USER: ${{ secrets.PORTAL_USER }}
+          PORTAL_PASS: ${{ secrets.PORTAL_PASS }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          MAIL_RECIPIENTS: ${{ secrets.MAIL_RECIPIENTS }}
+        run: python scraper.py
