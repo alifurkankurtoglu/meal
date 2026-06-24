@@ -100,16 +100,19 @@ def login() -> requests.Session:
     if login_resp.status_code in (401, 403):
         raise RuntimeError(f"{login_resp.status_code} — erişim reddedildi (IP kısıtlaması veya hatalı şifre)")
 
-    if login_resp.status_code == 500:
-        # 500: form eksik/hatalı payload; HTML'i dump et
-        snippet = login_resp.text[:500].replace("\n", " ")
-        raise RuntimeError(f"500 Server Error. Yanıt başı: {snippet}")
+    # SAP portal bazen login başarılı olsa da 500 döner; içerik portal sayfasıysa devam et
+    body = login_resp.text
+    is_portal_page = "ur_system" in body or "vestel_tradeshow" in body or "irj/portal" in body
+    is_login_page = "j_user" in body and "j_password" in body
 
-    login_resp.raise_for_status()
+    if is_login_page:
+        raise RuntimeError("Giriş başarısız — hâlâ login sayfasında (şifre/kullanıcı hatalı?)")
 
-    if "j_user" in login_resp.text and "j_password" in login_resp.text:
-        raise RuntimeError("Giriş başarısız — hâlâ login sayfasında")
+    if login_resp.status_code == 500 and not is_portal_page:
+        snippet = body[:400].replace("\n", " ")
+        raise RuntimeError(f"500 Server Error ve portal sayfası değil. Yanıt: {snippet}")
 
+    print(f"  ✓ Giriş başarılı (status={login_resp.status_code})")
     return session
 
 
