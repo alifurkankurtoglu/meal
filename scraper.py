@@ -29,32 +29,48 @@ def get_menu() -> list[str]:
         print("→ Portal açılıyor…")
         page.goto(PORTAL_URL, wait_until="networkidle", timeout=60_000)
 
-        # Login formu — ana sayfada veya iframe içinde olabilir
-        def find_login_frame():
-            # Ana sayfa
-            if page.locator('input[name="j_user"]').count() > 0:
-                return page
-            # iframe'leri tara
-            for frame in page.frames:
-                try:
-                    if frame.locator('input[name="j_user"]').count() > 0:
-                        return frame
-                except Exception:
-                    pass
-            return None
+        # Login formu — SAP portal çeşitli input name'leri kullanabilir
+        LOGIN_USER_SELECTORS = [
+            'input[name="j_user"]',
+            'input[id*="logonuid"]',
+            'input[id*="username"]',
+            'input[type="text"]',
+        ]
+        LOGIN_PASS_SELECTORS = [
+            'input[name="j_password"]',
+            'input[id*="logonpass"]',
+            'input[type="password"]',
+        ]
 
-        login_ctx = find_login_frame()
-        if login_ctx:
-            print(f"  Login formu bulundu ({type(login_ctx).__name__}), giriş yapılıyor…")
-            login_ctx.fill('input[name="j_user"]', PORTAL_USER)
-            login_ctx.fill('input[name="j_password"]', PORTAL_PASS)
-            login_ctx.locator('input[type="submit"], button[type="submit"]').first.click()
-            page.wait_for_load_state("networkidle", timeout=60_000)
-            print(f"  Login sonrası URL: {page.url}")
+        user_input = None
+        for sel in LOGIN_USER_SELECTORS:
+            loc = page.locator(sel).first
+            if loc.count() > 0:
+                user_input = loc
+                print(f"  User input bulundu: {sel}")
+                break
+
+        if user_input:
+            pass_input = None
+            for sel in LOGIN_PASS_SELECTORS:
+                loc = page.locator(sel).first
+                if loc.count() > 0:
+                    pass_input = loc
+                    print(f"  Pass input bulundu: {sel}")
+                    break
+
+            if pass_input:
+                user_input.fill(PORTAL_USER)
+                pass_input.fill(PORTAL_PASS)
+                page.locator('input[type="submit"], button[type="submit"]').first.click()
+                page.wait_for_load_state("networkidle", timeout=60_000)
+                print(f"  Login sonrası URL: {page.url}")
+            else:
+                print("  ⚠ Şifre alanı bulunamadı")
         else:
-            print("  ⚠ Login formu bulunamadı, iframe listesi:")
-            for f in page.frames:
-                print(f"    frame url={f.url}")
+            print("  ⚠ Login formu bulunamadı — tüm input'lar:")
+            for inp in page.locator("input").all():
+                print(f"    {inp.get_attribute('name')} / {inp.get_attribute('type')} / {inp.get_attribute('id')}")
 
         # Öğle Yemeği Menüsü bölümünü bekle
         print("→ Menü aranıyor…")
@@ -70,18 +86,20 @@ def get_menu() -> list[str]:
             browser.close()
             return []
 
-        # Menü kalemlerini topla — başlığın parent container'ındaki text node'lar
+        # Menü kalemlerini topla — JSF PrimeFaces dt.ui-datalist-item
         items: list[str] = []
 
-        # İlk yöntem: "Öğle Yemeği Menüsü" yazısını içeren bloğun kardeş/çocuk elementleri
-        menu_section = page.locator('text=/[ÖO]ğle Yeme/i').first
-        # Üst container'a çık (3 seviye)
-        container = menu_section.locator("xpath=ancestor::*[3]")
-        raw = container.inner_text()
-        for line in raw.splitlines():
-            line = line.strip()
-            if line and len(line) > 2 and "ğle Yeme" not in line and "12:00" not in line:
-                items.append(line)
+        # Öğle yemeği accordion paneli: mealAccordionPanel:1 (index 1)
+        # Tüm dt.ui-datalist-item içinden Öğle Yemeği'ne ait olanları al
+        oglen_panel = page.locator('[id*="mealAccordionPanel:1"] dt.ui-datalist-item')
+        if oglen_panel.count() == 0:
+            # Fallback: tüm dt.ui-datalist-item (Öğle başlığı altındakiler)
+            oglen_panel = page.locator('dt.ui-datalist-item')
+
+        for dt in oglen_panel.all():
+            text = dt.inner_text().strip()
+            if text and len(text) > 2:
+                items.append(text)
 
         browser.close()
         print(f"  {len(items)} kalem bulundu")
