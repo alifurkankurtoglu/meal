@@ -73,46 +73,41 @@ def get_menu() -> list[str]:
             for inp in page.locator("input").all():
                 print(f"    {inp.get_attribute('name')} / {inp.get_attribute('type')} / {inp.get_attribute('id')}")
 
-        # iView iframe'lerinin yüklenmesini bekle (max 30s)
-        print("→ Menü aranıyor…")
+        # Direkt VestelPortal sayfasına git (bilinen meal URL)
+        print("→ Menü sayfasına gidiliyor…")
+        MEAL_URL = "https://portal.vestel.com.tr/VestelPortal/index.xhtml"
+        page.goto(MEAL_URL, wait_until="networkidle", timeout=60_000)
+        print(f"  Meal URL status: {page.url}")
+
         items: list[str] = []
-        meal_frame = None
-        for attempt in range(6):  # 6 x 5s = 30s
-            all_frames = page.frames
-            print(f"  Deneme {attempt+1}: {len(all_frames)} frame")
-            for frame in all_frames:
-                try:
-                    url = frame.url
-                    count = frame.locator('dt.ui-datalist-item').count()
-                    print(f"    {url[:80]} -> dt={count}")
-                    if count > 0:
-                        meal_frame = frame
-                        break
-                except Exception as e:
-                    print(f"    frame err: {e}")
-            if meal_frame:
-                break
-            page.wait_for_timeout(5000)
 
-        if meal_frame is None:
-            print("  ⚠ Meal frame 30s içinde bulunamadı.")
-            browser.close()
-            return []
+        # Accordion başlıklarını listele (debug)
+        headers = page.locator('[id*="mealAccordionPanel"][id$="_header"]').all()
+        print(f"  Accordion header sayısı: {len(headers)}")
+        for i, h in enumerate(headers):
+            print(f"    [{i}] id={h.get_attribute('id')} text={h.inner_text()[:50]}")
 
-        # Öğle Yemeği accordion'ını bul ve tıkla (kapalıysa aç)
-        oglen_header = meal_frame.locator('[id*="mealAccordionPanel:1_header"]')
+        # Öğle Yemeği accordion'ını bul ve aç
+        oglen_header = page.locator('[id*="mealAccordionPanel:1_header"]')
         if oglen_header.count() > 0:
             oglen_header.first.click()
-            meal_frame.wait_for_timeout(2000)
+            page.wait_for_timeout(2000)
             print("  Öğle accordion'ı tıklandı")
+        else:
+            # Text ile bul
+            oglen_header = page.locator('text=/[ÖO]ğle Yeme/i').first
+            if oglen_header.count() > 0:
+                oglen_header.click()
+                page.wait_for_timeout(2000)
+                print("  Öğle accordion text ile tıklandı")
 
         # Öğle yemeği kalemlerini al
-        oglen_panel = meal_frame.locator('[id*="mealAccordionPanel:1"] dt.ui-datalist-item')
-        if oglen_panel.count() == 0:
-            # Fallback: tüm görünür dt'ler
-            oglen_panel = meal_frame.locator('dt.ui-datalist-item:visible')
+        oglen_items = page.locator('[id*="mealAccordionPanel:1"] dt.ui-datalist-item')
+        if oglen_items.count() == 0:
+            oglen_items = page.locator('[aria-hidden="false"] dt.ui-datalist-item, [style*="display: block"] dt.ui-datalist-item')
+        print(f"  Öğle dt count: {oglen_items.count()}")
 
-        for dt in oglen_panel.all():
+        for dt in oglen_items.all():
             text = dt.inner_text().strip()
             if text and len(text) > 2:
                 items.append(text)
