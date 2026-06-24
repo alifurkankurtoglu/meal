@@ -29,14 +29,32 @@ def get_menu() -> list[str]:
         print("→ Portal açılıyor…")
         page.goto(PORTAL_URL, wait_until="networkidle", timeout=60_000)
 
-        # Login formu görünüyorsa doldur
-        if page.locator('input[name="j_user"]').count() > 0:
-            print("  Login formu bulundu, giriş yapılıyor…")
-            page.fill('input[name="j_user"]', PORTAL_USER)
-            page.fill('input[name="j_password"]', PORTAL_PASS)
-            page.click('input[type="submit"], button[type="submit"]')
+        # Login formu — ana sayfada veya iframe içinde olabilir
+        def find_login_frame():
+            # Ana sayfa
+            if page.locator('input[name="j_user"]').count() > 0:
+                return page
+            # iframe'leri tara
+            for frame in page.frames:
+                try:
+                    if frame.locator('input[name="j_user"]').count() > 0:
+                        return frame
+                except Exception:
+                    pass
+            return None
+
+        login_ctx = find_login_frame()
+        if login_ctx:
+            print(f"  Login formu bulundu ({type(login_ctx).__name__}), giriş yapılıyor…")
+            login_ctx.fill('input[name="j_user"]', PORTAL_USER)
+            login_ctx.fill('input[name="j_password"]', PORTAL_PASS)
+            login_ctx.locator('input[type="submit"], button[type="submit"]').first.click()
             page.wait_for_load_state("networkidle", timeout=60_000)
             print(f"  Login sonrası URL: {page.url}")
+        else:
+            print("  ⚠ Login formu bulunamadı, iframe listesi:")
+            for f in page.frames:
+                print(f"    frame url={f.url}")
 
         # Öğle Yemeği Menüsü bölümünü bekle
         print("→ Menü aranıyor…")
