@@ -2,8 +2,8 @@ name: Günlük Öğle Yemeği Menüsü
 
 on:
   schedule:
-    # Her gün 06:00 UTC = 09:00 Türkiye (UTC+3)
-    - cron: "0 6 * * 1-5"   # Hafta içi (Pzt–Cum)
+    # Her gün 06:30 UTC = 09:30 Türkiye (UTC+3)
+    - cron: "30 6 * * 1-5"   # Hafta içi (Pzt–Cum)
   workflow_dispatch:          # Elle tetikleme (test için)
 
 jobs:
