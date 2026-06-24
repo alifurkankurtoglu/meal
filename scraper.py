@@ -24,24 +24,39 @@ GMAIL_APP_PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
 RECIPIENTS = [r.strip() for r in os.environ["MAIL_RECIPIENTS"].split(",")]
 
 
+SAP_LOGIN_ENDPOINT = (
+    "https://portal.vestel.com.tr/irj/servlet/prt/portal/prtroot/"
+    "com.sap.portal.navigation.loginform"
+)
+BASE_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/125.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
+}
+
+
 def login() -> requests.Session:
     session = requests.Session()
-    session.headers.update({
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/125.0.0.0 Safari/537.36"
-        )
-    })
-    # İlk istek — oturum çerezi + CSRF token almak için
-    resp = session.get(PORTAL_URL, timeout=30)
-    resp.raise_for_status()
+    session.headers.update(BASE_HEADERS)
 
-    soup = BeautifulSoup(resp.text, "html.parser")
+    # SAP Netweaver: önce login sayfasını GET et (oturum çerezi + hidden token)
+    # 401 gelirse Basic Auth ile dene
+    login_page = session.get(
+        SAP_LOGIN_ENDPOINT,
+        auth=(PORTAL_USER, PORTAL_PASS),
+        allow_redirects=True,
+        timeout=30,
+    )
 
-    # SAP Netweaver form hidden field'larını topla
-    form = soup.find("form")
+    soup = BeautifulSoup(login_page.text, "html.parser")
+
+    # Hidden input'ları topla (CSRF / SAP token)
     payload: dict = {}
+    form = soup.find("form")
     if form:
         for inp in form.find_all("input", {"type": "hidden"}):
             if inp.get("name"):
@@ -53,21 +68,32 @@ def login() -> requests.Session:
         "action": "login",
     })
 
-    action = form["action"] if form and form.get("action") else LOGIN_URL
-    if action.startswith("/"):
-        action = "https://portal.vestel.com.tr" + action
+    # Form action URL'ini belirle
+    if form and form.get("action"):
+        action = form["action"]
+        if action.startswith("/"):
+            action = "https://portal.vestel.com.tr" + action
+    else:
+        action = SAP_LOGIN_ENDPOINT
 
-    login_resp = session.post(action, data=payload, timeout=30)
+    login_resp = session.post(
+        action,
+        data=payload,
+        auth=(PORTAL_USER, PORTAL_PASS),
+        allow_redirects=True,
+        timeout=30,
+    )
+
+    # Debug: HTTP durum kodu ve URL yazdır
+    print(f"  Login POST → {login_resp.status_code} | final URL: {login_resp.url}")
+
+    if login_resp.status_code == 401:
+        raise RuntimeError("401 Unauthorized — kullanıcı adı/şifre hatalı veya IP kısıtlaması var")
+
     login_resp.raise_for_status()
 
-    # Başarılı giriş kontrolü
-    if "j_user" in login_resp.text or "Oturumu kapat" not in login_resp.text:
-        # Bazı SAP portalları redirect zinciri yapar — takip et
-        if login_resp.history:
-            pass  # requests zaten follow_redirects=True
-        # Hâlâ login sayfasındaysa hata ver
-        if "j_user" in login_resp.text:
-            raise RuntimeError("Giriş başarısız — kullanıcı adı/şifre hatalı olabilir")
+    if "j_user" in login_resp.text and "j_password" in login_resp.text:
+        raise RuntimeError("Giriş başarısız — hâlâ login sayfasında")
 
     return session
 
