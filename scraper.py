@@ -10,7 +10,7 @@ import sys
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-import google.generativeai as genai
+from google import genai
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 PORTAL_URL = "https://portal.vestel.com.tr/irj/portal"
@@ -124,13 +124,15 @@ def generate_comment(items: list[str]) -> str:
         return ""
     try:
         menu_text = ", ".join(items)
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash-latest")
-        response = model.generate_content(
-            f"Bugünkü öğle yemeği menüsü: {menu_text}\n\n"
-            "Bu menü için kısa, esprili ve Türkçe bir yorum yaz. "
-            "Maksimum 2 cümle olsun, samimi ve neşeli bir ton kullan. "
-            "Sadece yorumu yaz, başka bir şey ekleme."
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model="gemini-2.0-flash-lite",
+            contents=(
+                f"Bugünkü öğle yemeği menüsü: {menu_text}\n\n"
+                "Bu menü için kısa, esprili ve Türkçe bir yorum yaz. "
+                "Maksimum 2 cümle olsun, samimi ve neşeli bir ton kullan. "
+                "Sadece yorumu yaz, başka bir şey ekleme."
+            ),
         )
         return response.text.strip()
     except Exception as e:
