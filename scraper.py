@@ -113,8 +113,15 @@ def login() -> requests.Session:
         raise RuntimeError(f"500 Server Error ve portal sayfası değil. Yanıt: {snippet}")
 
     print(f"  ✓ Giriş başarılı (status={login_resp.status_code})")
-    # Login response zaten portal sayfasını içeriyor; tekrar GET etmeye gerek yok
-    return session, login_resp.text
+    print(f"  Cookies: {dict(session.cookies)}")
+
+    # Login sonrası /irj/portal'ı cookie ile tekrar dene
+    home = session.get(PORTAL_URL, allow_redirects=True, timeout=30)
+    print(f"  Home GET → {home.status_code} | {home.url}")
+    print(f"  Home HTML snippet: {home.text[500:1000].replace(chr(10),' ')}")
+
+    html = home.text if home.status_code != 401 else login_resp.text
+    return session, html
 
 
 def fetch_menu(session: requests.Session, portal_html: str = "") -> list[str]:
