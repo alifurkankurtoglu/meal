@@ -10,6 +10,8 @@ import sys
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+import hashlib
+
 import requests
 from bs4 import BeautifulSoup
 
@@ -75,9 +77,19 @@ def login() -> requests.Session:
 
     print(f"  Form action: {action} | hidden fields: {list(payload.keys())}")
 
+    # SAP NetWeaver şifreyi SHA1(salt + SHA1(password)) olarak bekler
+    salt = payload.get("j_salt", "")
+    if salt:
+        sha1_pass = hashlib.sha1(PORTAL_PASS.encode("utf-8")).hexdigest()
+        hashed_pass = hashlib.sha1((salt + sha1_pass).encode("utf-8")).hexdigest()
+        print(f"  j_salt bulundu, şifre hash'lendi")
+    else:
+        hashed_pass = PORTAL_PASS
+        print("  j_salt yok, düz şifre kullanılıyor")
+
     payload.update({
         "j_user": PORTAL_USER,
-        "j_password": PORTAL_PASS,
+        "j_password": hashed_pass,
         "action": "login",
     })
 
