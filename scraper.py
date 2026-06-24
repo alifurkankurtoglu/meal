@@ -125,7 +125,7 @@ def generate_comment(items: list[str]) -> str:
     try:
         menu_text = ", ".join(items)
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash")
         response = model.generate_content(
             f"Bugünkü öğle yemeği menüsü: {menu_text}\n\n"
             "Bu menü için kısa, esprili ve Türkçe bir yorum yaz. "
