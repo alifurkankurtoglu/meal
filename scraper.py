@@ -113,14 +113,19 @@ def login() -> requests.Session:
         raise RuntimeError(f"500 Server Error ve portal sayfası değil. Yanıt: {snippet}")
 
     print(f"  ✓ Giriş başarılı (status={login_resp.status_code})")
-    return session
+    # Login response zaten portal sayfasını içeriyor; tekrar GET etmeye gerek yok
+    return session, login_resp.text
 
 
-def fetch_menu(session: requests.Session) -> list[str]:
+def fetch_menu(session: requests.Session, portal_html: str = "") -> list[str]:
     """Öğle Yemeği Menüsü kalemlerini döner."""
-    resp = session.get(PORTAL_URL, timeout=30)
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
+    if portal_html:
+        html = portal_html
+    else:
+        resp = session.get(PORTAL_URL, timeout=30)
+        resp.raise_for_status()
+        html = resp.text
+    soup = BeautifulSoup(html, "html.parser")
 
     # "Öğle Yemeği Menüsü" başlığını bul
     oglen_header = None
@@ -187,11 +192,11 @@ def main() -> None:
     today = date.today().strftime("%d %B %Y")
 
     print("→ Portala giriş yapılıyor…")
-    session = login()
+    session, portal_html = login()
     print("✓ Giriş başarılı")
 
     print("→ Menü çekiliyor…")
-    items = fetch_menu(session)
+    items = fetch_menu(session, portal_html)
     if not items:
         print("⚠ Menü bulunamadı, mail gönderilmedi.", file=sys.stderr)
         sys.exit(1)
