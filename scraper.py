@@ -39,27 +39,41 @@ BASE_HEADERS = {
 }
 
 
+def _abs(url: str) -> str:
+    return ("https://portal.vestel.com.tr" + url) if url.startswith("/") else url
+
+
 def login() -> requests.Session:
     session = requests.Session()
     session.headers.update(BASE_HEADERS)
 
-    # SAP Netweaver: login sayfasını GET et (oturum çerezi + hidden token)
-    # 401 dönse de HTML içinde form olabilir, raise etme
-    login_page = session.get(
-        SAP_LOGIN_ENDPOINT,
-        allow_redirects=True,
-        timeout=30,
-    )
+    # 1) /irj/portal → SAP login sayfasına redirect eder; o sayfayı al
+    step1 = session.get(PORTAL_URL, allow_redirects=True, timeout=30)
+    print(f"  Step1 GET /irj/portal → {step1.status_code} | {step1.url}")
 
-    soup = BeautifulSoup(login_page.text, "html.parser")
-
-    # Hidden input'ları topla (CSRF / SAP token)
-    payload: dict = {}
+    # 2) Eğer redirect zinciri farklı bir URL'e gittiyse onu kullan,
+    #    aksi hâlde SAP_LOGIN_ENDPOINT'e düşüyoruz
+    soup = BeautifulSoup(step1.text, "html.parser")
     form = soup.find("form")
+
+    if not form:
+        # Redirect sayfasında form yoksa doğrudan login endpoint'ini GET et
+        step2 = session.get(SAP_LOGIN_ENDPOINT, allow_redirects=True, timeout=30)
+        print(f"  Step2 GET loginform → {step2.status_code} | {step2.url}")
+        soup = BeautifulSoup(step2.text, "html.parser")
+        form = soup.find("form")
+
+    # 3) Hidden token'ları topla
+    payload: dict = {}
     if form:
         for inp in form.find_all("input", {"type": "hidden"}):
             if inp.get("name"):
                 payload[inp["name"]] = inp.get("value", "")
+        action = _abs(form.get("action") or SAP_LOGIN_ENDPOINT)
+    else:
+        action = SAP_LOGIN_ENDPOINT
+
+    print(f"  Form action: {action} | hidden fields: {list(payload.keys())}")
 
     payload.update({
         "j_user": PORTAL_USER,
@@ -67,26 +81,17 @@ def login() -> requests.Session:
         "action": "login",
     })
 
-    # Form action URL'ini belirle
-    if form and form.get("action"):
-        action = form["action"]
-        if action.startswith("/"):
-            action = "https://portal.vestel.com.tr" + action
-    else:
-        action = SAP_LOGIN_ENDPOINT
-
-    login_resp = session.post(
-        action,
-        data=payload,
-        allow_redirects=True,
-        timeout=30,
-    )
-
-    # Debug: HTTP durum kodu ve URL yazdır
+    # 4) Login POST
+    login_resp = session.post(action, data=payload, allow_redirects=True, timeout=30)
     print(f"  Login POST → {login_resp.status_code} | final URL: {login_resp.url}")
 
-    if login_resp.status_code == 401:
-        raise RuntimeError("401 Unauthorized — kullanıcı adı/şifre hatalı veya IP kısıtlaması var")
+    if login_resp.status_code in (401, 403):
+        raise RuntimeError(f"{login_resp.status_code} — erişim reddedildi (IP kısıtlaması veya hatalı şifre)")
+
+    if login_resp.status_code == 500:
+        # 500: form eksik/hatalı payload; HTML'i dump et
+        snippet = login_resp.text[:500].replace("\n", " ")
+        raise RuntimeError(f"500 Server Error. Yanıt başı: {snippet}")
 
     login_resp.raise_for_status()
 
