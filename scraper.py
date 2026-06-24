@@ -18,7 +18,8 @@ PORTAL_USER = os.environ["PORTAL_USER"]
 PORTAL_PASS = os.environ["PORTAL_PASS"]
 GMAIL_USER = os.environ["GMAIL_USER"]
 GMAIL_APP_PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
-RECIPIENTS = [r.strip() for r in os.environ["MAIL_RECIPIENTS"].split(",")]
+_raw_recipients = os.environ["MAIL_RECIPIENTS"].replace(";", ",")
+RECIPIENTS = [r.strip() for r in _raw_recipients.split(",") if r.strip()]
 
 
 def get_menu() -> list[str]:
@@ -98,10 +99,18 @@ def get_menu() -> list[str]:
             browser.close()
             return []
 
-        # Öğle yemeği: mealAccordionPanel:1 (index 1)
+        # Öğle Yemeği accordion'ını bul ve tıkla (kapalıysa aç)
+        oglen_header = meal_frame.locator('[id*="mealAccordionPanel:1_header"]')
+        if oglen_header.count() > 0:
+            oglen_header.first.click()
+            meal_frame.wait_for_timeout(2000)
+            print("  Öğle accordion'ı tıklandı")
+
+        # Öğle yemeği kalemlerini al
         oglen_panel = meal_frame.locator('[id*="mealAccordionPanel:1"] dt.ui-datalist-item')
         if oglen_panel.count() == 0:
-            oglen_panel = meal_frame.locator('dt.ui-datalist-item')
+            # Fallback: tüm görünür dt'ler
+            oglen_panel = meal_frame.locator('dt.ui-datalist-item:visible')
 
         for dt in oglen_panel.all():
             text = dt.inner_text().strip()
