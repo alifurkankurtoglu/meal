@@ -72,29 +72,35 @@ def get_menu() -> list[str]:
             for inp in page.locator("input").all():
                 print(f"    {inp.get_attribute('name')} / {inp.get_attribute('type')} / {inp.get_attribute('id')}")
 
-        # Öğle Yemeği Menüsü bölümünü bekle
+        # Sayfanın iView'larının yüklenmesi için kısa bekle
         print("→ Menü aranıyor…")
-        try:
-            page.wait_for_selector(
-                'text=/[ÖO]ğle Yeme/i',
-                timeout=20_000,
-            )
-        except PWTimeout:
-            # Sayfa içeriğini dump et (ilk 2000 karakter)
-            snippet = page.inner_text("body")[:2000].replace("\n", " | ")
-            print(f"  Menü başlığı bulunamadı. Sayfa içeriği: {snippet}", file=sys.stderr)
-            browser.close()
-            return []
+        page.wait_for_timeout(5000)
 
         # Menü kalemlerini topla — JSF PrimeFaces dt.ui-datalist-item
         items: list[str] = []
 
-        # Öğle yemeği accordion paneli: mealAccordionPanel:1 (index 1)
-        # Tüm dt.ui-datalist-item içinden Öğle Yemeği'ne ait olanları al
-        oglen_panel = page.locator('[id*="mealAccordionPanel:1"] dt.ui-datalist-item')
+        # Yemek Menüsü bir iView/iframe içinde — tüm frame'leri tara
+        meal_frame = None
+        for frame in page.frames:
+            try:
+                if frame.locator('dt.ui-datalist-item').count() > 0:
+                    meal_frame = frame
+                    print(f"  Meal frame bulundu: {frame.url}")
+                    break
+            except Exception:
+                pass
+
+        if meal_frame is None:
+            print("  ⚠ Meal frame bulunamadı. Tüm frame URL'leri:")
+            for f in page.frames:
+                print(f"    {f.url}")
+            browser.close()
+            return []
+
+        # Öğle yemeği: mealAccordionPanel:1 (index 1)
+        oglen_panel = meal_frame.locator('[id*="mealAccordionPanel:1"] dt.ui-datalist-item')
         if oglen_panel.count() == 0:
-            # Fallback: tüm dt.ui-datalist-item (Öğle başlığı altındakiler)
-            oglen_panel = page.locator('dt.ui-datalist-item')
+            oglen_panel = meal_frame.locator('dt.ui-datalist-item')
 
         for dt in oglen_panel.all():
             text = dt.inner_text().strip()
