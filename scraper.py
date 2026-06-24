@@ -43,11 +43,10 @@ def login() -> requests.Session:
     session = requests.Session()
     session.headers.update(BASE_HEADERS)
 
-    # SAP Netweaver: önce login sayfasını GET et (oturum çerezi + hidden token)
-    # 401 gelirse Basic Auth ile dene
+    # SAP Netweaver: login sayfasını GET et (oturum çerezi + hidden token)
+    # 401 dönse de HTML içinde form olabilir, raise etme
     login_page = session.get(
         SAP_LOGIN_ENDPOINT,
-        auth=(PORTAL_USER, PORTAL_PASS),
         allow_redirects=True,
         timeout=30,
     )
@@ -79,7 +78,6 @@ def login() -> requests.Session:
     login_resp = session.post(
         action,
         data=payload,
-        auth=(PORTAL_USER, PORTAL_PASS),
         allow_redirects=True,
         timeout=30,
     )
