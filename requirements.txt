@@ -1,1 +1,2 @@
 playwright>=1.44
+anthropic>=0.92.0

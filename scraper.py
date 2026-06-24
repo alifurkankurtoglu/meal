@@ -10,6 +10,7 @@ import sys
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+import anthropic
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 PORTAL_URL = "https://portal.vestel.com.tr/irj/portal"
@@ -117,20 +118,56 @@ def get_menu() -> list[str]:
         return items
 
 
-def build_email(items: list[str], date_str: str):
+def generate_comment(items: list[str]) -> str:
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        return ""
+    try:
+        menu_text = ", ".join(items)
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=150,
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"Bugünkü öğle yemeği menüsü: {menu_text}\n\n"
+                    "Bu menü için kısa, esprili ve Türkçe bir yorum yaz. "
+                    "Maksimum 2 cümle olsun, samimi ve neşeli bir ton kullan. "
+                    "Sadece yorumu yaz, başka bir şey ekleme."
+                ),
+            }],
+        )
+        return response.content[0].text.strip()
+    except Exception as e:
+        print(f"  ⚠ AI yorum üretilemedi: {e}")
+        return ""
+
+
+def build_email(items: list[str], date_str: str, comment: str = ""):
     subject = f"Bugünkü Öğle Yemeği Menüsü — {date_str}"
     html_items = "".join(f"<li>{item}</li>" for item in items)
+    comment_html = (
+        f'<p style="font-size:15px;color:#2c3e50;background:#fef9e7;'
+        f'border-left:4px solid #f39c12;padding:10px 14px;border-radius:4px;'
+        f'margin:16px 0">💬 {comment}</p>'
+        if comment else ""
+    )
     html = f"""
     <html><body style="font-family:Arial,sans-serif;max-width:520px;margin:auto">
       <h2 style="color:#c0392b;border-bottom:2px solid #c0392b;padding-bottom:8px">
         Öğle Yemeği Menüsü
       </h2>
       <p style="color:#555">{date_str} &middot; 12:00 / 20:00 / 00:00</p>
+      {comment_html}
       <ul style="font-size:15px;line-height:2">{html_items}</ul>
       <p style="color:#aaa;font-size:12px;margin-top:24px">Bu e-posta otomatik olarak gönderilmiştir.</p>
     </body></html>
     """
-    plain = f"Öğle Yemeği Menüsü — {date_str}\n\n" + "\n".join(f"• {i}" for i in items)
+    plain = f"Öğle Yemeği Menüsü — {date_str}\n\n"
+    if comment:
+        plain += f"💬 {comment}\n\n"
+    plain += "\n".join(f"• {i}" for i in items)
     return subject, html, plain
 
 
@@ -159,7 +196,8 @@ def main() -> None:
         sys.exit(1)
     print(f"✓ {len(items)} kalem: {items}")
 
-    subject, html, plain = build_email(items, today)
+    comment = generate_comment(items)
+    subject, html, plain = build_email(items, today, comment)
     send_email(subject, html, plain)
 
 
